@@ -1,12 +1,13 @@
-// MegaSonic PBX Engine - SIP.js based softphone
-// Supports: register, call, hangup, hold, transfer, DTMF, call log
+// MegaSonic Custom PBX Engine
+// Built from scratch using native WebRTC + WebSocket signaling
+// NO third-party PBX/SIP libraries used
 
 export interface PBXConfig {
-  server: string      // e.g. wss://sip.callcentric.com:8089/ws
-  username: string    // SIP extension or DID
+  wsUrl: string        // e.g. wss://yourdomain.com/pbx-signal
+  extension: string   // e.g. '1001'
   password: string
   displayName: string
-  realm?: string
+  stunServer?: string  // e.g. 'stun:stun.l.google.com:19302'
 }
 
 export interface CallRecord {
@@ -23,186 +24,300 @@ export interface CallRecord {
 
 export type PBXState = 'unregistered' | 'registering' | 'registered' | 'error'
 
+type EventCallback = (...args: any[]) => void
+
 export class MegaSonicPBX {
-  private ua: any = null
-  private session: any = null
+  private ws: WebSocket | null = null
+  private pc: RTCPeerConnection | null = null
+  private localStream: MediaStream | null = null
   private config: PBXConfig | null = null
   private state: PBXState = 'unregistered'
   private callLog: CallRecord[] = []
-  private listeners: Map<string, Function[]> = new Map()
+  private listeners: Map<string, EventCallback[]> = new Map()
+  private activeCall: CallRecord | null = null
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
 
-  // Load SIP.js dynamically (browser only)
-  private async loadSIP() {
-    if (typeof window === 'undefined') throw new Error('PBX requires browser environment')
-    if ((window as any).SIP) return (window as any).SIP
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script')
-      script.src = 'https://cdn.jsdelivr.net/npm/sip.js@0.21.2/dist/sip.min.js'
-      script.onload = () => resolve((window as any).SIP)
-      script.onerror = reject
-      document.head.appendChild(script)
-    })
+  // ─── Event Bus ───────────────────────────────────────────────
+  on(event: string, cb: EventCallback) {
+    if (!this.listeners.has(event)) this.listeners.set(event, [])
+    this.listeners.get(event)!.push(cb)
+  }
+  off(event: string, cb: EventCallback) {
+    const arr = this.listeners.get(event) || []
+    this.listeners.set(event, arr.filter(f => f !== cb))
+  }
+  private emit(event: string, ...args: any[]) {
+    ;(this.listeners.get(event) || []).forEach(cb => cb(...args))
   }
 
-  async register(config: PBXConfig): Promise<void> {
+  // ─── WebSocket Signaling ─────────────────────────────────────
+  connect(config: PBXConfig) {
     this.config = config
     this.setState('registering')
-    try {
-      const SIP = await this.loadSIP()
-      this.ua = new SIP.UA({
-        uri: `sip:${config.username}@${config.realm || config.server.replace('wss://', '').split(':')[0]}`,
-        transportOptions: { wsServers: [config.server] },
-        authorizationUser: config.username,
-        password: config.password,
-        displayName: config.displayName,
-        register: true,
-        sessionDescriptionHandlerFactoryOptions: { constraints: { audio: true, video: false } },
-      })
-      this.ua.on('registered', () => { this.setState('registered'); this.emit('registered') })
-      this.ua.on('registrationFailed', (e: any) => { this.setState('error'); this.emit('error', e) })
-      this.ua.on('invite', (session: any) => this.handleIncoming(session))
-      this.ua.start()
-    } catch (e) {
+    this.ws = new WebSocket(config.wsUrl)
+
+    this.ws.onopen = () => {
+      this.send({ type: 'REGISTER', extension: config.extension, password: config.password, displayName: config.displayName })
+      this.startHeartbeat()
+    }
+
+    this.ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        this.handleSignal(msg)
+      } catch {}
+    }
+
+    this.ws.onerror = () => {
       this.setState('error')
-      throw e
+      this.emit('error', 'WebSocket connection failed')
+    }
+
+    this.ws.onclose = () => {
+      this.setState('unregistered')
+      this.stopHeartbeat()
+      this.emit('disconnected')
     }
   }
 
-  async call(number: string): Promise<string> {
-    if (!this.ua || this.state !== 'registered') throw new Error('Not registered')
-    const SIP = await this.loadSIP()
-    const callId = `call-${Date.now()}`
-    const target = `sip:${number}@${this.config!.realm || this.config!.server.replace('wss://','').split(':')[0]}`
-    const audioElement = this.getAudioElement()
-    this.session = this.ua.invite(target, {
-      sessionDescriptionHandlerOptions: { constraints: { audio: true, video: false } },
-      media: { remote: { audio: audioElement } },
-    })
-    const record: CallRecord = {
-      id: callId, direction: 'outbound', remoteNumber: number,
-      startTime: new Date(), status: 'calling'
-    }
-    this.callLog.unshift(record)
-    this.session.on('accepted', () => { record.status = 'active'; this.emit('callActive', record) })
-    this.session.on('terminated', () => { this.endCall(record) })
-    this.emit('callStarted', record)
-    return callId
+  disconnect() {
+    this.send({ type: 'UNREGISTER', extension: this.config?.extension })
+    this.stopHeartbeat()
+    this.ws?.close()
+    this.ws = null
+    this.setState('unregistered')
   }
 
-  hangup(): void {
-    if (this.session) {
-      try { this.session.terminate() } catch {}
-      this.session = null
+  private send(msg: object) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg))
     }
   }
 
-  hold(): void {
-    this.session?.hold()
-    const active = this.callLog.find(c => c.status === 'active')
-    if (active) { active.status = 'held'; this.emit('callHeld', active) }
+  private startHeartbeat() {
+    this.heartbeatTimer = setInterval(() => {
+      this.send({ type: 'PING', extension: this.config?.extension })
+    }, 25000)
   }
 
-  unhold(): void {
-    this.session?.unhold()
-    const held = this.callLog.find(c => c.status === 'held')
-    if (held) { held.status = 'active'; this.emit('callActive', held) }
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
+    this.heartbeatTimer = null
   }
 
-  sendDTMF(tone: string): void {
-    this.session?.dtmf(tone)
-  }
-
-  transfer(target: string): void {
-    if (!this.session) throw new Error('No active call')
-    this.session.refer(`sip:${target}@${this.config!.realm || ''}`)
-  }
-
-  private handleIncoming(session: any): void {
-    this.session = session
-    const caller = session.remoteIdentity?.uri?.user || 'Unknown'
-    const record: CallRecord = {
-      id: `call-${Date.now()}`, direction: 'inbound', remoteNumber: caller,
-      remoteName: session.remoteIdentity?.displayName,
-      startTime: new Date(), status: 'calling'
-    }
-    this.callLog.unshift(record)
-    session.on('accepted', () => { record.status = 'active'; this.emit('callActive', record) })
-    session.on('terminated', () => {
-      if (record.status === 'calling') record.status = 'missed'
-      this.endCall(record)
-    })
-    this.emit('incomingCall', { session, record })
-  }
-
-  answerCall(): void {
-    const audioElement = this.getAudioElement()
-    this.session?.accept({ media: { remote: { audio: audioElement } } })
-  }
-
-  rejectCall(): void {
-    this.session?.reject()
-    this.session = null
-  }
-
-  private endCall(record: CallRecord): void {
-    record.endTime = new Date()
-    record.duration = Math.floor((record.endTime.getTime() - record.startTime.getTime()) / 1000)
-    if (record.status !== 'missed') record.status = 'ended'
-    this.session = null
-    this.emit('callEnded', record)
-    this.saveCallLog()
-  }
-
-  private getAudioElement(): HTMLAudioElement {
-    let el = document.getElementById('megasonic-pbx-audio') as HTMLAudioElement
-    if (!el) {
-      el = document.createElement('audio')
-      el.id = 'megasonic-pbx-audio'
-      el.autoplay = true
-      document.body.appendChild(el)
-    }
-    return el
-  }
-
-  private setState(s: PBXState): void {
+  private setState(s: PBXState) {
     this.state = s
     this.emit('stateChange', s)
   }
 
   getState(): PBXState { return this.state }
-  getCallLog(): CallRecord[] { return this.callLog }
+  getCallLog(): CallRecord[] { return [...this.callLog] }
+  getActiveCall(): CallRecord | null { return this.activeCall }
 
-  private saveCallLog(): void {
-    try { localStorage.setItem('megasonic_call_log', JSON.stringify(this.callLog.slice(0, 100))) } catch {}
+  // ─── Signal Handler ───────────────────────────────────────────
+  private async handleSignal(msg: any) {
+    switch (msg.type) {
+      case 'REGISTERED':
+        this.setState('registered')
+        this.emit('registered')
+        break
+
+      case 'REGISTER_FAILED':
+        this.setState('error')
+        this.emit('error', msg.reason || 'Registration failed')
+        break
+
+      case 'INBOUND_CALL':
+        const inbound: CallRecord = {
+          id: msg.callId || crypto.randomUUID(),
+          direction: 'inbound',
+          remoteNumber: msg.from,
+          remoteName: msg.fromName,
+          startTime: new Date(),
+          status: 'calling'
+        }
+        this.activeCall = inbound
+        this.callLog.unshift(inbound)
+        this.emit('inboundCall', inbound, msg.offer)
+        break
+
+      case 'ANSWER':
+        if (this.pc && msg.answer) {
+          await this.pc.setRemoteDescription(new RTCSessionDescription(msg.answer))
+          this.updateActiveCall({ status: 'active' })
+          this.emit('callConnected', this.activeCall)
+        }
+        break
+
+      case 'ICE_CANDIDATE':
+        if (this.pc && msg.candidate) {
+          await this.pc.addIceCandidate(new RTCIceCandidate(msg.candidate)).catch(() => {})
+        }
+        break
+
+      case 'HANGUP':
+        this.endCallLocally(msg.callId)
+        break
+
+      case 'HOLD_ACK':
+        this.updateActiveCall({ status: 'held' })
+        this.emit('callHeld', this.activeCall)
+        break
+
+      case 'RESUME_ACK':
+        this.updateActiveCall({ status: 'active' })
+        this.emit('callResumed', this.activeCall)
+        break
+
+      case 'PONG':
+        break
+
+      default:
+        this.emit('signal', msg)
+    }
   }
 
-  loadCallLog(): void {
-    try {
-      const data = localStorage.getItem('megasonic_call_log')
-      if (data) this.callLog = JSON.parse(data)
-    } catch {}
+  // ─── Outbound Call ────────────────────────────────────────────
+  async call(number: string): Promise<void> {
+    if (this.state !== 'registered') throw new Error('Not registered')
+    if (this.activeCall?.status === 'active') throw new Error('Already in a call')
+
+    this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    this.pc = this.createPeerConnection()
+    this.localStream.getTracks().forEach(t => this.pc!.addTrack(t, this.localStream!))
+
+    const offer = await this.pc.createOffer()
+    await this.pc.setLocalDescription(offer)
+
+    const record: CallRecord = {
+      id: crypto.randomUUID(),
+      direction: 'outbound',
+      remoteNumber: number,
+      startTime: new Date(),
+      status: 'calling'
+    }
+    this.activeCall = record
+    this.callLog.unshift(record)
+
+    this.send({ type: 'CALL', to: number, from: this.config?.extension, callId: record.id, offer: this.pc.localDescription })
+    this.emit('outboundCall', record)
   }
 
-  on(event: string, fn: Function): void {
-    if (!this.listeners.has(event)) this.listeners.set(event, [])
-    this.listeners.get(event)!.push(fn)
+  // ─── Answer Inbound ───────────────────────────────────────────
+  async answer(offer: RTCSessionDescriptionInit): Promise<void> {
+    this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    this.pc = this.createPeerConnection()
+    this.localStream.getTracks().forEach(t => this.pc!.addTrack(t, this.localStream!))
+
+    await this.pc.setRemoteDescription(new RTCSessionDescription(offer))
+    const answer = await this.pc.createAnswer()
+    await this.pc.setLocalDescription(answer)
+
+    this.send({ type: 'ANSWER', callId: this.activeCall?.id, answer: this.pc.localDescription })
+    this.updateActiveCall({ status: 'active' })
+    this.emit('callConnected', this.activeCall)
   }
 
-  off(event: string, fn: Function): void {
-    const arr = this.listeners.get(event) || []
-    this.listeners.set(event, arr.filter(f => f !== fn))
+  // ─── Hangup ───────────────────────────────────────────────────
+  hangup() {
+    if (this.activeCall) {
+      this.send({ type: 'HANGUP', callId: this.activeCall.id })
+      this.endCallLocally(this.activeCall.id)
+    }
   }
 
-  private emit(event: string, data?: any): void {
-    (this.listeners.get(event) || []).forEach(fn => fn(data))
+  private endCallLocally(callId?: string) {
+    if (this.activeCall && (!callId || this.activeCall.id === callId)) {
+      const end = new Date()
+      const dur = Math.round((end.getTime() - this.activeCall.startTime.getTime()) / 1000)
+      this.updateActiveCall({ status: 'ended', endTime: end, duration: dur })
+      this.emit('callEnded', this.activeCall)
+      this.activeCall = null
+    }
+    this.cleanupMedia()
   }
 
-  unregister(): void {
-    this.ua?.stop()
-    this.ua = null
-    this.setState('unregistered')
+  // ─── Hold / Resume ────────────────────────────────────────────
+  hold() {
+    if (this.activeCall) {
+      this.send({ type: 'HOLD', callId: this.activeCall.id })
+    }
+  }
+
+  resume() {
+    if (this.activeCall) {
+      this.send({ type: 'RESUME', callId: this.activeCall.id })
+    }
+  }
+
+  // ─── Transfer ─────────────────────────────────────────────────
+  transfer(target: string) {
+    if (this.activeCall) {
+      this.send({ type: 'TRANSFER', callId: this.activeCall.id, target })
+      this.emit('callTransferred', this.activeCall, target)
+      this.endCallLocally(this.activeCall.id)
+    }
+  }
+
+  // ─── DTMF ─────────────────────────────────────────────────────
+  sendDTMF(digit: string) {
+    if (!this.pc) return
+    const senders = this.pc.getSenders()
+    senders.forEach(sender => {
+      if (sender.track?.kind === 'audio') {
+        try { (sender as any).dtmf?.insertDTMF(digit) } catch {}
+      }
+    })
+    this.send({ type: 'DTMF', callId: this.activeCall?.id, digit })
+  }
+
+  // ─── Mute ─────────────────────────────────────────────────────
+  setMute(muted: boolean) {
+    this.localStream?.getAudioTracks().forEach(t => { t.enabled = !muted })
+    this.emit('muteChanged', muted)
+  }
+
+  // ─── WebRTC Peer Connection ───────────────────────────────────
+  private createPeerConnection(): RTCPeerConnection {
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: this.config?.stunServer || 'stun:stun.l.google.com:19302' }]
+    })
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) {
+        this.send({ type: 'ICE_CANDIDATE', callId: this.activeCall?.id, candidate })
+      }
+    }
+
+    pc.ontrack = (evt) => {
+      this.emit('remoteAudio', evt.streams[0])
+    }
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed') {
+        this.emit('error', 'WebRTC connection failed')
+        this.endCallLocally()
+      }
+    }
+
+    return pc
+  }
+
+  private cleanupMedia() {
+    this.localStream?.getTracks().forEach(t => t.stop())
+    this.localStream = null
+    this.pc?.close()
+    this.pc = null
+  }
+
+  private updateActiveCall(patch: Partial<CallRecord>) {
+    if (this.activeCall) {
+      Object.assign(this.activeCall, patch)
+      const idx = this.callLog.findIndex(c => c.id === this.activeCall?.id)
+      if (idx >= 0) this.callLog[idx] = { ...this.activeCall }
+    }
   }
 }
 
-// Singleton
+// Singleton export for app-wide use
 export const pbx = new MegaSonicPBX()
