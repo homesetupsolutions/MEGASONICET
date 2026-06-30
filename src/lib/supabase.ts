@@ -3,18 +3,34 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+export const DEMO_MODE = !supabaseUrl || supabaseUrl === ''
+
+// Lazy client - only created when actually needed at runtime, not at build time
+let _supabase: SupabaseClient | null = null
+export function getSupabaseClient(): SupabaseClient {
+  if (!_supabase) {
+    if (DEMO_MODE) throw new Error('Supabase not configured')
+    _supabase = createClient(supabaseUrl, supabaseAnonKey)
+  }
+  return _supabase
+}
+
+// Keep backward compat - lazy proxy
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getSupabaseClient() as any)[prop]
+  }
+})
 
 // Server-side admin client (never expose to browser)
 export function getSupabaseAdmin(): SupabaseClient {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!serviceKey) throw new Error('SUPABASE_SERVICE_ROLE_KEY not set')
-  return createClient(supabaseUrl, serviceKey, {
+  if (!url || !serviceKey) throw new Error('Supabase admin env vars not set')
+  return createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   })
 }
-
-export const DEMO_MODE = !supabaseUrl || supabaseUrl === ''
 
 // ---- Bookings ----
 export interface Booking {
@@ -62,90 +78,98 @@ export async function listBookings(business?: string, limit = 50) {
 }
 
 export async function updateBookingStatus(id: string, status: Booking['status']) {
-  if (DEMO_MODE) return { success: true, demo: true }
+  if (DEMO_MODE) return { success: true }
   const admin = getSupabaseAdmin()
   const { error } = await admin.from('bookings').update({ status }).eq('id', id)
-  if (error) return { success: false, error: error.message }
+  if (error) throw new Error(error.message)
   return { success: true }
 }
 
 // ---- Leads ----
 export interface Lead {
   id?: string
-  business: 'FEELBASSVIP' | 'HSS'
   name: string
-  email?: string
   phone?: string
-  source: 'angi' | 'direct' | 'referral' | 'square' | 'other'
-  status: 'new' | 'contacted' | 'quoted' | 'won' | 'lost'
+  email?: string
+  source?: string
+  service_interest?: string
+  estimated_value?: string
+  status?: string
   notes?: string
   created_at?: string
 }
 
 export async function createLead(lead: Omit<Lead, 'id' | 'created_at'>) {
-  if (DEMO_MODE) return { success: true, id: 'DEMO-LEAD-' + Date.now(), demo: true }
+  if (DEMO_MODE) return { success: true, id: 'DEMO-LEAD-' + Date.now() }
   const admin = getSupabaseAdmin()
   const { data, error } = await admin.from('leads').insert(lead).select().single()
   if (error) return { success: false, error: error.message }
   return { success: true, id: data.id }
 }
 
-export async function listLeads(business?: string, limit = 50) {
+export async function listLeads(status?: string) {
   if (DEMO_MODE) {
-    return Array.from({ length: 5 }, (_, i) => ({
+    return Array.from({ length: 4 }, (_, i) => ({
       id: `DEMO-LEAD-${i + 1}`,
-      business: i % 2 === 0 ? 'FEELBASSVIP' : 'HSS',
       name: `Demo Lead ${i + 1}`,
-      source: 'angi',
-      status: 'new',
+      email: `lead${i + 1}@example.com`,
+      phone: `555-000${i}`,
+      source: 'manual',
+      service_interest: i % 2 === 0 ? 'FeelBassVIP Event' : 'Home Setup',
+      estimated_value: String((i + 1) * 250),
+      status: ['new','contacted','qualified','converted'][i % 4],
       created_at: new Date().toISOString()
     }))
   }
   const admin = getSupabaseAdmin()
-  let query = admin.from('leads').select('*').order('created_at', { ascending: false }).limit(limit)
-  if (business) query = query.eq('business', business)
+  let query = admin.from('leads').select('*').order('created_at', { ascending: false })
+  if (status) query = query.eq('status', status)
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return data || []
 }
 
+export async function updateLeadStatus(id: string, status: string) {
+  if (DEMO_MODE) return { success: true }
+  const admin = getSupabaseAdmin()
+  const { error } = await admin.from('leads').update({ status }).eq('id', id)
+  if (error) throw new Error(error.message)
+  return { success: true }
+}
+
 // ---- Reminders ----
 export interface Reminder {
   id?: string
-  booking_id?: string
-  lead_id?: string
-  business: 'FEELBASSVIP' | 'HSS'
-  type: 'sms' | 'email' | 'call'
-  scheduled_at: string
-  status: 'pending' | 'sent' | 'failed'
-  message?: string
+  title: string
+  body?: string
+  remind_at: string
+  channel?: string
+  status?: string
   created_at?: string
 }
 
 export async function createReminder(reminder: Omit<Reminder, 'id' | 'created_at'>) {
-  if (DEMO_MODE) return { success: true, id: 'DEMO-REM-' + Date.now(), demo: true }
+  if (DEMO_MODE) return { success: true, id: 'DEMO-REM-' + Date.now() }
   const admin = getSupabaseAdmin()
   const { data, error } = await admin.from('reminders').insert(reminder).select().single()
   if (error) return { success: false, error: error.message }
   return { success: true, id: data.id }
 }
 
-export async function listReminders(business?: string, limit = 50) {
+export async function listReminders() {
   if (DEMO_MODE) {
     return Array.from({ length: 3 }, (_, i) => ({
       id: `DEMO-REM-${i + 1}`,
-      business: 'FEELBASSVIP',
-      type: 'sms',
-      scheduled_at: new Date(Date.now() + i * 3600000).toISOString(),
+      title: `Demo Reminder ${i + 1}`,
+      body: 'Follow up with client',
+      remind_at: new Date(Date.now() + (i + 1) * 3600000).toISOString(),
+      channel: 'email',
       status: 'pending',
-      message: `Reminder ${i + 1}: Confirm your booking`,
       created_at: new Date().toISOString()
     }))
   }
   const admin = getSupabaseAdmin()
-  let query = admin.from('reminders').select('*').order('scheduled_at', { ascending: true }).limit(limit)
-  if (business) query = query.eq('business', business)
-  const { data, error } = await query
+  const { data, error } = await admin.from('reminders').select('*').order('remind_at', { ascending: true })
   if (error) throw new Error(error.message)
   return data || []
 }
