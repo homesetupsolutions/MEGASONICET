@@ -1,31 +1,32 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
+import { chatWithGemini, generateBookingConfirmation, generateLeadResponse } from '@/lib/azure'
+import { apiError, apiSuccess } from '@/lib/utils'
 
 export async function POST(req: NextRequest) {
   try {
-    const { message } = await req.json()
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ reply: 'Gemini API key not configured. Add GEMINI_API_KEY to .env' }, { status: 200 })
+    const body = await req.json()
+    const { action, messages, booking, lead } = body
+
+    if (action === 'chat') {
+      if (!messages || !Array.isArray(messages)) return apiError('messages array required', 400)
+      const result = await chatWithGemini(messages)
+      return apiSuccess({ reply: result.content, demo: result.demo, tokens: result.tokens })
     }
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `You are a business assistant for MegaSonic Command Center, helping manage FeelBassVIP (wearable bass headset rental events) and HomeSetupSolutions (residential tech install) in Calgary, Alberta. Be concise and helpful.\n\nUser: ${message}`
-            }]
-          }],
-          generationConfig: { maxOutputTokens: 500, temperature: 0.7 }
-        })
-      }
-    )
-    const data = await res.json()
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from Gemini.'
-    return NextResponse.json({ reply })
+
+    if (action === 'booking_confirmation') {
+      if (!booking) return apiError('booking object required', 400)
+      const message = await generateBookingConfirmation(booking)
+      return apiSuccess({ message })
+    }
+
+    if (action === 'lead_response') {
+      if (!lead) return apiError('lead object required', 400)
+      const message = await generateLeadResponse(lead)
+      return apiSuccess({ message })
+    }
+
+    return apiError('Invalid action. Use: chat, booking_confirmation, lead_response', 400)
   } catch (e: any) {
-    return NextResponse.json({ reply: `Error: ${e.message}` }, { status: 500 })
+    return apiError(e.message)
   }
 }
