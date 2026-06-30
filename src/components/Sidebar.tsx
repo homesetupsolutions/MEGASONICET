@@ -1,148 +1,194 @@
-'use client';
-import Link from 'next/link';
-import Image from 'next/image';
-import { usePathname } from 'next/navigation';
+"use client";
 
-const nav = [
-  { href: '/', icon: '🏠', label: 'Dashboard' },
-  { href: '/bookings', icon: '📋', label: 'Bookings' },
-  { href: '/calendar', icon: '📅', label: 'Calendar' },
-  { href: '/reminders', icon: '🔔', label: 'Reminders' },
-  { href: '/leads', icon: '🎯', label: 'Live Leads' },
-  { href: '/ai', icon: '✨', label: 'Gemini AI' },
-  { href: '/pbx', icon: '📞', label: 'PBX Phone' },
-  { href: '/square', icon: '💳', label: 'Square' },
-  { href: '/payments', icon: '💰', label: 'Payments' },
-  { href: '/settings', icon: '⚙️', label: 'Settings' },
-];
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import {
+  Activity,
+  Bot,
+  CalendarClock,
+  CalendarDays,
+  CreditCard,
+  DollarSign,
+  Headphones,
+  Home,
+  LayoutDashboard,
+  ListChecks,
+  PhoneCall,
+  Radar,
+  Settings,
+  Sparkles,
+  Users,
+  Wrench
+} from "lucide-react";
 
-// Nav item accent colors cycling through neon palette
-const accentColors = [
-  '#00f5ff', '#b44fff', '#00ff88', '#ff2d78',
-  '#ff8c00', '#00f5ff', '#b44fff', '#00ff88',
-  '#ff2d78', '#ff8c00',
+const menu = [
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    color: "from-cyan-300 to-blue-500"
+  },
+  {
+    label: "Bookings",
+    href: "/bookings",
+    icon: CalendarClock,
+    color: "from-violet-300 to-fuchsia-500"
+  },
+  {
+    label: "Calendar",
+    href: "/calendar",
+    icon: CalendarDays,
+    color: "from-sky-300 to-cyan-500"
+  },
+  {
+    label: "FeelBass POS",
+    href: "/pos",
+    icon: Headphones,
+    color: "from-lime-300 to-cyan-400"
+  },
+  {
+    label: "ET Pet",
+    href: "/et",
+    icon: Sparkles,
+    color: "from-pink-300 via-yellow-300 to-cyan-400"
+  },
+  {
+    label: "Gig Planner",
+    href: "/gig-planner",
+    icon: Wrench,
+    color: "from-orange-300 to-pink-500"
+  },
+  {
+    label: "Leads",
+    href: "/leads",
+    icon: Radar,
+    color: "from-emerald-300 to-cyan-400"
+  },
+  {
+    label: "Customers",
+    href: "/customers",
+    icon: Users,
+    color: "from-blue-300 to-indigo-500"
+  },
+  {
+    label: "Earnings",
+    href: "/earnings",
+    icon: DollarSign,
+    color: "from-yellow-300 to-orange-500"
+  },
+  {
+    label: "Payments",
+    href: "/payments",
+    icon: CreditCard,
+    color: "from-green-300 to-emerald-500"
+  },
+  {
+    label: "Square",
+    href: "/square",
+    icon: CreditCard,
+    color: "from-emerald-300 to-lime-500"
+  },
+  {
+    label: "PBX / Calls",
+    href: "/pbx",
+    icon: PhoneCall,
+    color: "from-cyan-300 to-purple-500"
+  },
+  {
+    label: "Reminders",
+    href: "/reminders",
+    icon: ListChecks,
+    color: "from-red-300 to-orange-500"
+  },
+  {
+    label: "MONICA AI",
+    href: "/ai",
+    icon: Bot,
+    color: "from-purple-300 to-cyan-400"
+  },
+  {
+    label: "Activity",
+    href: "/activity",
+    icon: Activity,
+    color: "from-pink-300 to-purple-500"
+  },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: Settings,
+    color: "from-slate-300 to-slate-500"
+  }
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside style={{
-      width: '200px',
-      minWidth: '200px',
-      height: '100vh',
-      background: '#0a0a14',
-      borderRight: '1px solid #1a1a2e',
-      display: 'flex',
-      flexDirection: 'column' as const,
-      overflow: 'hidden',
-      flexShrink: 0,
-    }}>
-      {/* Logo area */}
-      <div style={{
-        padding: '16px 14px 12px',
-        borderBottom: '1px solid #1a1a2e',
-        display: 'flex',
-        flexDirection: 'column' as const,
-        alignItems: 'center',
-        gap: '6px',
-      }}>
-        <div style={{ position: 'relative', width: '100px', height: '38px' }}>
-          <Image
-            src="/logos/feelbass-logo.png"
-            alt="FeelBass VIP"
-            fill
-            style={{ objectFit: 'contain' }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
+    <aside className="min-h-screen w-72 shrink-0 border-r border-cyan-400/20 bg-black/70 px-4 py-5 text-white shadow-[0_0_35px_rgba(0,234,255,0.08)] backdrop-blur-xl">
+      <Link
+        href="/dashboard"
+        className="mb-6 flex items-center gap-3 rounded-3xl border border-cyan-400/20 bg-white/[0.03] p-4 transition hover:border-cyan-300/40 hover:bg-cyan-300/5"
+      >
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 text-cyan-200">
+          <Home size={24} />
         </div>
-        <div style={{
-          fontSize: '0.6rem',
-          fontWeight: 700,
-          letterSpacing: '0.2em',
-          textTransform: 'uppercase' as const,
-          background: 'linear-gradient(90deg, #00f5ff, #b44fff)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-        }}>MEGASONIC</div>
-        <div style={{
-          fontSize: '0.5rem',
-          letterSpacing: '0.12em',
-          color: '#4b5563',
-          textTransform: 'uppercase' as const,
-        }}>Command Center</div>
-      </div>
 
-      {/* Nav items */}
-      <nav style={{ flex: 1, padding: '10px 0', overflowY: 'auto' as const }}>
-        {nav.map(({ href, icon, label }, i) => {
-          const isActive = pathname === href || (href !== '/' && pathname.startsWith(href));
-          const accent = accentColors[i % accentColors.length];
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-cyan-300">
+            MegaSonic
+          </p>
+          <h1 className="text-lg font-black uppercase tracking-[0.08em] text-white">
+            Command Center
+          </h1>
+        </div>
+      </Link>
+
+      <nav className="space-y-2">
+        {menu.map((item) => {
+          const Icon = item.icon;
+          const active =
+            pathname === item.href ||
+            (item.href !== "/dashboard" && pathname.startsWith(item.href));
+
           return (
             <Link
-              key={href}
-              href={href}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '9px 14px',
-                margin: '1px 8px',
-                borderRadius: '6px',
-                textDecoration: 'none',
-                fontSize: '0.78rem',
-                fontWeight: isActive ? 700 : 500,
-                letterSpacing: '0.04em',
-                color: isActive ? accent : '#9ca3af',
-                background: isActive
-                  ? `linear-gradient(135deg, ${accent}18, ${accent}08)`
-                  : 'transparent',
-                border: isActive
-                  ? `1px solid ${accent}40`
-                  : '1px solid transparent',
-                transition: 'all 0.15s ease',
-                boxShadow: isActive ? `0 0 8px ${accent}20` : 'none',
-              }}
+              key={item.href}
+              href={item.href}
+              className={`group flex items-center gap-3 rounded-2xl border px-3 py-3 transition ${
+                active
+                  ? "border-cyan-300/40 bg-cyan-300/10 text-white shadow-[0_0_22px_rgba(0,234,255,0.14)]"
+                  : "border-white/5 bg-white/[0.025] text-slate-400 hover:border-cyan-300/30 hover:bg-cyan-300/5 hover:text-white"
+              }`}
             >
-              <span style={{ fontSize: '0.9rem', minWidth: '18px', textAlign: 'center' }}>{icon}</span>
-              <span>{label}</span>
-              {isActive && (
-                <span style={{
-                  marginLeft: 'auto',
-                  width: '4px',
-                  height: '4px',
-                  borderRadius: '50%',
-                  background: accent,
-                  boxShadow: `0 0 6px ${accent}`,
-                }} />
-              )}
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${item.color} text-black shadow-[0_0_18px_rgba(0,234,255,0.12)]`}
+              >
+                <Icon size={19} />
+              </div>
+
+              <span className="text-sm font-bold uppercase tracking-[0.08em]">
+                {item.label}
+              </span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer */}
-      <div style={{
-        padding: '12px 14px',
-        borderTop: '1px solid #1a1a2e',
-        fontSize: '0.6rem',
-        color: '#374151',
-        letterSpacing: '0.06em',
-        textAlign: 'center' as const,
-      }}>
-        <div style={{ marginBottom: '4px' }}>
-          <span style={{
-            display: 'inline-block',
-            width: '6px', height: '6px',
-            borderRadius: '50%',
-            background: '#00ff88',
-            boxShadow: '0 0 6px #00ff88',
-            marginRight: '5px',
-            verticalAlign: 'middle',
-          }} />
-          LIVE
-        </div>
-        FeelBassVIP & HSS © 2026
+      <div className="mt-6 rounded-3xl border border-fuchsia-400/20 bg-fuchsia-400/5 p-4">
+        <p className="text-xs font-black uppercase tracking-[0.25em] text-fuchsia-300">
+          ET Status
+        </p>
+        <p className="mt-2 text-sm text-slate-300">
+          ET is your Tamagotchi-style rainbow business pet for hunting leads, filling your
+          calendar, learning money ideas, and helping run MegaSonic.
+        </p>
+
+        <Link
+          href="/et"
+          className="mt-4 block rounded-2xl border border-pink-300/30 bg-gradient-to-r from-pink-300/15 via-yellow-300/15 to-cyan-300/15 px-4 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-white transition hover:border-cyan-300/50 hover:bg-cyan-300/10"
+        >
+          Open ET Pet
+        </Link>
       </div>
     </aside>
   );
