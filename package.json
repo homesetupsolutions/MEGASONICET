@@ -21,7 +21,7 @@
     "framer-motion": "^11.0.0",
     "date-fns": "^3.3.0",
     "lucide-react": "^0.330.0",
-    "date-fns-tz": "^2.0.0",
+        "date-fns-tz": "^3.1.3",
     "clsx": "^2.1.0",
     "tailwind-merge": "^2.2.0",
     "square": "^38.0.0",
