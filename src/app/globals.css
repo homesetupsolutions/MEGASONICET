@@ -1,0 +1,82 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sonic-bg: #0a0a0f;
+  --sonic-panel: #12121a;
+  --sonic-border: #1e1e2e;
+  --sonic-accent: #00f5ff;
+  --sonic-purple: #7c3aed;
+  --sonic-green: #00ff88;
+  --sonic-red: #ff3366;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background-color: var(--sonic-bg);
+  color: #e2e8f0;
+  font-family: 'Inter', -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--sonic-panel);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sonic-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sonic-accent);
+}
+
+.sonic-glow {
+  box-shadow: 0 0 10px rgba(0, 245, 255, 0.3);
+}
+
+.sonic-panel {
+  background: var(--sonic-panel);
+  border: 1px solid var(--sonic-border);
+  border-radius: 8px;
+}
+
+.sonic-card {
+  background: var(--sonic-panel);
+  border: 1px solid var(--sonic-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  transition: border-color 0.2s;
+}
+
+.sonic-card:hover {
+  border-color: var(--sonic-accent);
+}
+
+.sonic-btn {
+  background: var(--sonic-accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.sonic-btn:hover {
+  opacity: 0.85;
+}
