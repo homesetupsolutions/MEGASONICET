@@ -3,6 +3,9 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || ''
 const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN || ''
 const DEMO_MODE = !GOOGLE_CLIENT_ID
 
+// Primary calendar for FeelBassVIP booking availability
+export const FEELBASS_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'vip@feelbass.vip'
+
 async function getAccessToken(): Promise<string> {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -25,22 +28,27 @@ export interface CalendarEvent {
   start: string
   end: string
   location?: string
+  attendees?: string[]
 }
 
-export async function listEvents(calendarId = 'primary', maxResults = 20): Promise<CalendarEvent[]> {
+export async function listEvents(
+  calendarId = FEELBASS_CALENDAR_ID,
+  maxResults = 20
+): Promise<CalendarEvent[]> {
   if (DEMO_MODE) {
     return Array.from({ length: 5 }, (_, i) => ({
       id: `demo-evt-${i}`,
-      summary: `Demo Event #${i + 1}`,
-      description: 'FeelBassVIP Setup',
+      summary: `FeelBassVIP Event #${i + 1}`,
+      description: 'Bass sensory experience setup',
       start: new Date(Date.now() + i * 86400000).toISOString(),
       end: new Date(Date.now() + i * 86400000 + 7200000).toISOString(),
-      location: 'Toronto, ON'
+      location: 'Calgary, AB'
     }))
   }
   const token = await getAccessToken()
-  const url = `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?maxResults=${maxResults}&orderBy=startTime&singleEvents=true&timeMin=${new Date().toISOString()}`
-  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
+  const timeMin = new Date().toISOString()
+  const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?maxResults=${maxResults}&orderBy=startTime&singleEvents=true&timeMin=${timeMin}`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
   const data = await res.json()
   return (data.items || []).map((e: any) => ({
     id: e.id,
@@ -52,22 +60,59 @@ export async function listEvents(calendarId = 'primary', maxResults = 20): Promi
   }))
 }
 
-export async function createEvent(event: CalendarEvent, calendarId = 'primary'): Promise<CalendarEvent> {
+export async function checkAvailability(
+  startTime: string,
+  endTime: string,
+  calendarId = FEELBASS_CALENDAR_ID
+): Promise<boolean> {
+  if (DEMO_MODE) return true
+  const events = await listEvents(calendarId, 50)
+  const reqStart = new Date(startTime).getTime()
+  const reqEnd = new Date(endTime).getTime()
+  const conflict = events.some(e => {
+    const evtStart = new Date(e.start).getTime()
+    const evtEnd = new Date(e.end).getTime()
+    return reqStart < evtEnd && reqEnd > evtStart
+  })
+  return !conflict
+}
+
+export async function createEvent(
+  event: CalendarEvent,
+  calendarId = FEELBASS_CALENDAR_ID
+): Promise<CalendarEvent> {
   if (DEMO_MODE) return { ...event, id: 'DEMO-' + Date.now() }
   const token = await getAccessToken()
-  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      summary: event.summary,
-      description: event.description,
-      location: event.location,
-      start: { dateTime: event.start },
-      end: { dateTime: event.end }
-    })
-  })
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        summary: event.summary,
+        description: event.description,
+        location: event.location,
+        start: { dateTime: event.start, timeZone: 'America/Edmonton' },
+        end: { dateTime: event.end, timeZone: 'America/Edmonton' },
+        attendees: event.attendees?.map(email => ({ email })),
+        sendUpdates: 'all'
+      })
+    }
+  )
   const data = await res.json()
   return { ...event, id: data.id }
+}
+
+export async function deleteEvent(
+  eventId: string,
+  calendarId = FEELBASS_CALENDAR_ID
+): Promise<void> {
+  if (DEMO_MODE) return
+  const token = await getAccessToken()
+  await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`,
+    { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+  )
 }
 
 export function isDemoMode(): boolean { return DEMO_MODE }
