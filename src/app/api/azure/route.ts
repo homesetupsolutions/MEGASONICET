@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { azureChat, azureSpeechToken, azureUploadBlob, azureListBlobs, azureDemoMode } from '@/lib/azure';
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/azure?action=status|speech-token|list-files
 export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get('action') || 'status';
