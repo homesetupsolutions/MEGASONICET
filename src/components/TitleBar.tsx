@@ -1,17 +1,40 @@
-'use client'
-declare global { interface Window { electronAPI?: { minimize:()=>void; maximize:()=>void; close:()=>void } } }
+'use client';
+import { useState, useEffect } from 'react';
 
 export default function TitleBar() {
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI
-  if (!isElectron) return null
+  const [time, setTime] = useState('');
+  const [date, setDate] = useState('');
+
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setTime(now.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setDate(now.toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
+    };
+    update();
+    const t = setInterval(update, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
-    <div className="fixed top-0 left-0 right-0 h-8 bg-[#0a0a0f] border-b border-[#1e1e2e] flex items-center justify-between px-4 z-50" style={{WebkitAppRegion:'drag'} as React.CSSProperties}>
-      <span className="text-[#00f5ff] text-xs font-bold tracking-widest">MEGASONIC COMMAND CENTER</span>
-      <div className="flex gap-2" style={{WebkitAppRegion:'no-drag'} as React.CSSProperties}>
-        <button onClick={() => window.electronAPI?.minimize()} className="w-3 h-3 rounded-full bg-yellow-400 hover:bg-yellow-300" />
-        <button onClick={() => window.electronAPI?.maximize()} className="w-3 h-3 rounded-full bg-green-500 hover:bg-green-400" />
-        <button onClick={() => window.electronAPI?.close()} className="w-3 h-3 rounded-full bg-red-500 hover:bg-red-400" />
-      </div>
+    <div style={{
+      height: '42px',
+      minHeight: '42px',
+      background: '#0d0d18',
+      borderBottom: '1px solid #1e1e2e',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '0 16px',
+      flexShrink: 0,
+    }}>
+      <span style={{ color: '#00f5ff', fontWeight: 700, fontSize: '13px', letterSpacing: '0.12em' }}>
+        MEGASONIC
+      </span>
+      <span style={{ color: '#64748b', fontSize: '11px' }}>
+        {date} &mdash; {time}
+      </span>
+      <span style={{ color: '#444', fontSize: '11px' }}>Vancouver, BC</span>
     </div>
-  )
+  );
 }
