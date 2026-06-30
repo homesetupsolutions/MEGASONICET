@@ -7,6 +7,7 @@ type PlatformId = "uber-eats" | "doordash-downtown" | "instacart";
 type Platform = {
   id: PlatformId;
   name: string;
+  shortName: string;
   mode: string;
   area: string;
   active: boolean;
@@ -14,16 +15,20 @@ type Platform = {
 };
 
 type TimeBlock = {
+  id: string;
   label: string;
   time: string;
-  bestFor: string;
-  reason: string;
+  bestFor: PlatformId;
+  backup: PlatformId;
+  completed: boolean;
+  notes: string;
 };
 
 const starterPlatforms: Platform[] = [
   {
     id: "uber-eats",
     name: "Uber Eats",
+    shortName: "Uber",
     mode: "Drive",
     area: "Flexible / city-wide",
     active: true,
@@ -32,6 +37,7 @@ const starterPlatforms: Platform[] = [
   {
     id: "doordash-downtown",
     name: "DoorDash Downtown",
+    shortName: "DoorDash",
     mode: "Bike",
     area: "Downtown",
     active: true,
@@ -40,68 +46,110 @@ const starterPlatforms: Platform[] = [
   {
     id: "instacart",
     name: "Instacart",
-    mode: "Mostly",
+    shortName: "Instacart",
+    mode: "Mostly shopping",
     area: "Grocery / shopping runs",
     active: true,
     goal: 90
   }
 ];
 
-const timeBlocks: TimeBlock[] = [
+const starterBlocks: TimeBlock[] = [
   {
+    id: "morning",
     label: "Morning",
     time: "8:00 AM - 11:00 AM",
-    bestFor: "Instacart",
-    reason: "Good grocery order window before lunch rush."
+    bestFor: "instacart",
+    backup: "uber-eats",
+    completed: false,
+    notes: "Start with grocery orders before lunch."
   },
   {
+    id: "lunch",
     label: "Lunch Rush",
     time: "11:00 AM - 2:00 PM",
-    bestFor: "DoorDash Downtown",
-    reason: "Bike downtown to avoid parking and catch restaurant orders."
+    bestFor: "doordash-downtown",
+    backup: "uber-eats",
+    completed: false,
+    notes: "Bike downtown and avoid parking problems."
   },
   {
+    id: "afternoon",
     label: "Afternoon",
     time: "2:00 PM - 5:00 PM",
-    bestFor: "Instacart",
-    reason: "Steady shopping orders and less restaurant pressure."
+    bestFor: "instacart",
+    backup: "doordash-downtown",
+    completed: false,
+    notes: "Use this as a steady shopping/order window."
   },
   {
+    id: "dinner",
     label: "Dinner Rush",
     time: "5:00 PM - 9:00 PM",
-    bestFor: "Uber Eats",
-    reason: "Driving works better for longer dinner delivery routes."
+    bestFor: "uber-eats",
+    backup: "doordash-downtown",
+    completed: false,
+    notes: "Drive for longer dinner delivery routes."
+  },
+  {
+    id: "late",
+    label: "Late Flex",
+    time: "9:00 PM - 11:00 PM",
+    bestFor: "uber-eats",
+    backup: "doordash-downtown",
+    completed: false,
+    notes: "Only work this if the day goal is not reached."
   }
 ];
 
-function badgeClass(platformName: string) {
-  if (platformName.includes("Uber")) {
+function platformStyle(id: PlatformId) {
+  if (id === "uber-eats") {
     return "border-lime-300/40 bg-lime-300/10 text-lime-100";
   }
 
-  if (platformName.includes("DoorDash")) {
+  if (id === "doordash-downtown") {
     return "border-red-300/40 bg-red-300/10 text-red-100";
   }
 
   return "border-cyan-300/40 bg-cyan-300/10 text-cyan-100";
 }
 
-export default function GigPlannerPage() {
+function getPlatformName(platforms: Platform[], id: PlatformId) {
+  return platforms.find((platform) => platform.id === id)?.name || id;
+}
+
+function getPlatformShortName(platforms: Platform[], id: PlatformId) {
+  return platforms.find((platform) => platform.id === id)?.shortName || id;
+}
+
+function isPlatformActive(platforms: Platform[], id: PlatformId) {
+  return platforms.some((platform) => platform.id === id && platform.active);
+}
+
+export default function DeliveryPlannerPage() {
   const [platforms, setPlatforms] = useState<Platform[]>(starterPlatforms);
+  const [blocks, setBlocks] = useState<TimeBlock[]>(starterBlocks);
   const [dayGoal, setDayGoal] = useState("180");
-  const [notes, setNotes] = useState("");
+  const [actualEarned, setActualEarned] = useState("");
+  const [dayNotes, setDayNotes] = useState("");
 
   const activePlatforms = platforms.filter((platform) => platform.active);
 
   const totals = useMemo(() => {
-    const activeCount = platforms.filter((platform) => platform.active).length;
-
-    const potential = platforms
+    const activeGoal = platforms
       .filter((platform) => platform.active)
       .reduce((sum, platform) => sum + platform.goal, 0);
 
-    return { activeCount, potential };
-  }, [platforms]);
+    const completedBlocks = blocks.filter((block) => block.completed).length;
+    const remainingGoal = Math.max(Number(dayGoal || 0) - Number(actualEarned || 0), 0);
+
+    return {
+      activeApps: activePlatforms.length,
+      activeGoal,
+      completedBlocks,
+      remainingGoal
+    };
+  }, [platforms, blocks, dayGoal, actualEarned, activePlatforms.length]);
 
   function togglePlatform(id: PlatformId) {
     setPlatforms((prev) =>
@@ -113,7 +161,7 @@ export default function GigPlannerPage() {
     );
   }
 
-  function updateGoal(id: PlatformId, value: string) {
+  function updatePlatformGoal(id: PlatformId, value: string) {
     setPlatforms((prev) =>
       prev.map((platform) =>
         platform.id === id
@@ -123,51 +171,65 @@ export default function GigPlannerPage() {
     );
   }
 
-  function recommendedPlatform(bestFor: string) {
-    const matching = platforms.find((platform) => platform.name === bestFor);
+  function toggleBlockComplete(id: string) {
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.id === id ? { ...block, completed: !block.completed } : block
+      )
+    );
+  }
 
-    if (!matching) {
-      return false;
+  function updateBlockNote(id: string, value: string) {
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.id === id ? { ...block, notes: value } : block
+      )
+    );
+  }
+
+  function chooseRecommendedPlatform(block: TimeBlock) {
+    if (isPlatformActive(platforms, block.bestFor)) {
+      return block.bestFor;
     }
 
-    return matching.active;
+    if (isPlatformActive(platforms, block.backup)) {
+      return block.backup;
+    }
+
+    return block.bestFor;
   }
 
   return (
     <main className="min-h-screen bg-[#05050a] p-5 text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(57,255,136,0.14),transparent_32rem),radial-gradient(circle_at_top_right,rgba(255,70,70,0.12),transparent_34rem),radial-gradient(circle_at_bottom,rgba(0,234,255,0.1),transparent_30rem)]" />
 
-      <section className="relative z-10">
+      <section className="relative z-10 mx-auto max-w-7xl">
         <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 shadow-[0_0_35px_rgba(0,234,255,0.08)] backdrop-blur-xl">
           <p className="font-mono text-xs font-black uppercase tracking-[0.35em] text-cyan-300">
             Daily Delivery Planner
           </p>
 
           <h1 className="mt-2 bg-gradient-to-r from-lime-300 via-cyan-300 to-red-300 bg-clip-text text-4xl font-black uppercase tracking-[0.1em] text-transparent">
-            Gig Planner
+            Plan My Day
           </h1>
 
           <p className="mt-3 max-w-4xl text-sm text-slate-300">
-            Toggle your active apps for the day and plan around the best delivery
-            windows: Uber Eats by car, DoorDash Downtown by bike, and Instacart
-            mostly for shopping runs.
+            Toggle your delivery apps, set goals, mark time blocks complete, and
+            choose the best app for each part of the day.
           </p>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <Stat label="Apps On" value={String(totals.activeCount)} />
-            <Stat label="App Goal Total" value={`$${totals.potential}`} />
-            <Stat label="Your Day Goal" value={`$${Number(dayGoal || 0)}`} />
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <Stat label="Apps On" value={String(totals.activeApps)} />
+            <Stat label="App Goal Total" value={`$${totals.activeGoal}`} />
+            <Stat label="Blocks Done" value={`${totals.completedBlocks}/${blocks.length}`} />
+            <Stat label="Remaining" value={`$${totals.remainingGoal}`} />
           </div>
         </div>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
           <div className="space-y-5">
-            <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5">
-              <h2 className="text-xl font-black uppercase tracking-[0.12em] text-white">
-                Toggle Apps
-              </h2>
-
-              <div className="mt-5 space-y-3">
+            <Panel title="Toggle Apps">
+              <div className="space-y-3">
                 {platforms.map((platform) => (
                   <div
                     key={platform.id}
@@ -209,7 +271,7 @@ export default function GigPlannerPage() {
                       <input
                         value={platform.goal}
                         onChange={(event) =>
-                          updateGoal(platform.id, event.target.value)
+                          updatePlatformGoal(platform.id, event.target.value)
                         }
                         className="mt-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none focus:border-cyan-300"
                       />
@@ -217,57 +279,56 @@ export default function GigPlannerPage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </Panel>
 
-            <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5">
-              <h2 className="text-xl font-black uppercase tracking-[0.12em] text-white">
-                Day Goal
-              </h2>
-
-              <label className="mt-4 block">
-                <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                  Target Earnings
-                </span>
-
-                <input
+            <Panel title="Money Tracker">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field
+                  label="Day Goal"
                   value={dayGoal}
-                  onChange={(event) => setDayGoal(event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none focus:border-cyan-300"
+                  onChange={setDayGoal}
+                  placeholder="180"
                 />
-              </label>
+
+                <Field
+                  label="Actual Earned"
+                  value={actualEarned}
+                  onChange={setActualEarned}
+                  placeholder="0"
+                />
+              </div>
 
               <label className="mt-4 block">
                 <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                  Notes
+                  Day Notes
                 </span>
 
                 <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
+                  value={dayNotes}
+                  onChange={(event) => setDayNotes(event.target.value)}
                   rows={5}
                   className="mt-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none focus:border-cyan-300"
-                  placeholder="Example: start with Instacart, switch downtown for lunch, drive dinner rush..."
+                  placeholder="Example: start Instacart, switch downtown for lunch, drive dinner rush..."
                 />
               </label>
-            </div>
+            </Panel>
           </div>
 
-          <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5">
-            <h2 className="text-xl font-black uppercase tracking-[0.12em] text-white">
-              Suggested Day Plan
-            </h2>
-
-            <div className="mt-5 space-y-3">
-              {timeBlocks.map((block) => {
-                const isActive = recommendedPlatform(block.bestFor);
+          <Panel title="Time Block Plan">
+            <div className="space-y-3">
+              {blocks.map((block) => {
+                const selectedPlatform = chooseRecommendedPlatform(block);
+                const selectedIsActive = isPlatformActive(platforms, selectedPlatform);
 
                 return (
                   <div
-                    key={block.label}
+                    key={block.id}
                     className={`rounded-3xl border p-5 transition ${
-                      isActive
-                        ? "border-cyan-300/30 bg-black/40"
-                        : "border-white/10 bg-black/20 opacity-40"
+                      block.completed
+                        ? "border-lime-300/40 bg-lime-300/10"
+                        : selectedIsActive
+                          ? "border-cyan-300/30 bg-black/40"
+                          : "border-white/10 bg-black/20 opacity-50"
                     }`}
                   >
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -281,25 +342,50 @@ export default function GigPlannerPage() {
                         </h3>
 
                         <p className="mt-3 text-sm text-slate-300">
-                          {block.reason}
+                          {block.notes}
+                        </p>
+
+                        <p className="mt-2 text-xs text-slate-500">
+                          Backup: {getPlatformName(platforms, block.backup)}
                         </p>
                       </div>
 
-                      <span
-                        className={`inline-block rounded-full border px-3 py-1 text-xs font-black uppercase ${badgeClass(
-                          block.bestFor
-                        )}`}
-                      >
-                        {block.bestFor}
-                      </span>
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <span
+                          className={`inline-block rounded-full border px-3 py-1 text-xs font-black uppercase ${platformStyle(
+                            selectedPlatform
+                          )}`}
+                        >
+                          {getPlatformShortName(platforms, selectedPlatform)}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleBlockComplete(block.id)}
+                          className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.16em] transition ${
+                            block.completed
+                              ? "border-lime-300/40 bg-lime-300/10 text-lime-100"
+                              : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-cyan-300/40"
+                          }`}
+                        >
+                          {block.completed ? "Done" : "Mark Done"}
+                        </button>
+                      </div>
                     </div>
 
-                    {!isActive && (
-                      <p className="mt-4 rounded-2xl border border-yellow-300/20 bg-yellow-300/10 p-3 text-xs font-bold text-yellow-100">
-                        This block is dimmed because {block.bestFor} is toggled
-                        off.
-                      </p>
-                    )}
+                    <label className="mt-4 block">
+                      <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                        Block Note
+                      </span>
+
+                      <input
+                        value={block.notes}
+                        onChange={(event) =>
+                          updateBlockNote(block.id, event.target.value)
+                        }
+                        className="mt-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none focus:border-cyan-300"
+                      />
+                    </label>
                   </div>
                 );
               })}
@@ -322,24 +408,42 @@ export default function GigPlannerPage() {
               </p>
 
               <p className="mt-3 text-sm text-slate-300">
-                Best simple flow: Instacart for grocery windows, DoorDash
-                Downtown on bike for lunch, and Uber Eats driving for dinner.
+                Simple flow: Instacart for grocery windows, DoorDash Downtown on
+                bike for lunch, and Uber Eats driving for dinner.
               </p>
 
-              {notes.trim() && (
+              {dayNotes.trim() && (
                 <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
                   <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                    Your Notes
+                    Your Day Notes
                   </p>
 
-                  <p className="mt-2 text-sm text-slate-200">{notes}</p>
+                  <p className="mt-2 text-sm text-slate-200">{dayNotes}</p>
                 </div>
               )}
             </div>
-          </div>
+          </Panel>
         </div>
       </section>
     </main>
+  );
+}
+
+function Panel({
+  title,
+  children
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-slate-950/80 p-5">
+      <h2 className="mb-5 text-xl font-black uppercase tracking-[0.12em] text-white">
+        {title}
+      </h2>
+
+      {children}
+    </div>
   );
 }
 
@@ -352,5 +456,32 @@ function Stat({ label, value }: { label: string; value: string }) {
 
       <p className="mt-2 text-3xl font-black text-white">{value}</p>
     </div>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+        {label}
+      </span>
+
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="mt-2 w-full rounded-2xl border border-white/10 bg-black px-4 py-3 text-sm text-white outline-none focus:border-cyan-300"
+      />
+    </label>
   );
 }
