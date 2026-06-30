@@ -1,59 +1,37 @@
 {
   "name": "megasonic-command-center",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "electron": "electron .",
-    "electron:build": "electron-builder",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "electron:build-win": "npm run build && electron-builder --win portable"
+    "lint": "next lint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.39.0",
     "@supabase/ssr": "^0.1.0",
+    "clsx": "^2.1.0",
+    "date-fns": "^3.3.0",
+    "framer-motion": "^11.0.0",
+    "lucide-react": "^0.330.0",
     "next": "14.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "framer-motion": "^11.0.0",
-    "date-fns": "^3.3.0",
-    "lucide-react": "^0.330.0",
-        "date-fns-tz": "^3.1.3",
-    "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0",
     "square": "^38.0.0",
-    "twilio": "^5.3.0",
-    "@google/generative-ai": "^0.21.0",
-        "microsoft-cognitiveservices-speech-sdk": "^1.42.0"
+    "tailwind-merge": "^2.2.0",
+    "twilio": "^5.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "typescript": "^5.3.0",
-    "tailwindcss": "^3.4.0",
-    "postcss": "^8.4.0",
     "autoprefixer": "^10.4.0",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.0",
-    "concurrently": "^8.2.0",
-    "wait-on": "^7.2.0"
-  },
-  "main": "electron/main.js",
-  "build": {
-    "appId": "com.megasonic.commandcenter",
-    "productName": "MegaSonic Command Center",
-    "win": {
-      "target": "portable",
-      "icon": "electron/icon.ico"
-    },
-    "files": [
-      ".next/**/*",
-      "electron/**/*",
-      "public/**/*"
-    ]
+    "eslint": "^8",
+    "eslint-config-next": "14.1.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5"
   }
 }
