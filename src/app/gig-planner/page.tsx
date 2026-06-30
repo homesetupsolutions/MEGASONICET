@@ -9,9 +9,15 @@ type Platform = {
   name: string;
   mode: string;
   area: string;
-  color: string;
   active: boolean;
   goal: number;
+};
+
+type TimeBlock = {
+  label: string;
+  time: string;
+  bestFor: string;
+  reason: string;
 };
 
 const starterPlatforms: Platform[] = [
@@ -20,7 +26,6 @@ const starterPlatforms: Platform[] = [
     name: "Uber Eats",
     mode: "Drive",
     area: "Flexible / city-wide",
-    color: "lime",
     active: true,
     goal: 80
   },
@@ -29,7 +34,6 @@ const starterPlatforms: Platform[] = [
     name: "DoorDash Downtown",
     mode: "Bike",
     area: "Downtown",
-    color: "red",
     active: true,
     goal: 70
   },
@@ -38,13 +42,12 @@ const starterPlatforms: Platform[] = [
     name: "Instacart",
     mode: "Mostly",
     area: "Grocery / shopping runs",
-    color: "cyan",
     active: true,
     goal: 90
   }
 ];
 
-const timeBlocks = [
+const timeBlocks: TimeBlock[] = [
   {
     label: "Morning",
     time: "8:00 AM - 11:00 AM",
@@ -92,6 +95,7 @@ export default function GigPlannerPage() {
 
   const totals = useMemo(() => {
     const activeCount = platforms.filter((platform) => platform.active).length;
+
     const potential = platforms
       .filter((platform) => platform.active)
       .reduce((sum, platform) => sum + platform.goal, 0);
@@ -102,7 +106,9 @@ export default function GigPlannerPage() {
   function togglePlatform(id: PlatformId) {
     setPlatforms((prev) =>
       prev.map((platform) =>
-        platform.id === id ? { ...platform, active: !platform.active } : platform
+        platform.id === id
+          ? { ...platform, active: !platform.active }
+          : platform
       )
     );
   }
@@ -119,7 +125,11 @@ export default function GigPlannerPage() {
 
   function recommendedPlatform(bestFor: string) {
     const matching = platforms.find((platform) => platform.name === bestFor);
-    if (!matching) return false;
+
+    if (!matching) {
+      return false;
+    }
+
     return matching.active;
   }
 
@@ -304,7 +314,9 @@ export default function GigPlannerPage() {
                 Today you are running:{" "}
                 <strong>
                   {activePlatforms.length
-                    ? activePlatforms.map((platform) => platform.name).join(", ")
+                    ? activePlatforms
+                        .map((platform) => platform.name)
+                        .join(", ")
                     : "No apps selected"}
                 </strong>
               </p>
@@ -313,6 +325,16 @@ export default function GigPlannerPage() {
                 Best simple flow: Instacart for grocery windows, DoorDash
                 Downtown on bike for lunch, and Uber Eats driving for dinner.
               </p>
+
+              {notes.trim() && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                    Your Notes
+                  </p>
+
+                  <p className="mt-2 text-sm text-slate-200">{notes}</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
