@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { getCallLogs, sendSMS, clickToCall, getVoicemails, getPBXStatus } from '@/lib/pbx'
 import { apiError, apiSuccess } from '@/lib/utils'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
