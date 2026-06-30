@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic'
+
 // Callcentric SIP Account Info
 // Account: 17778140621
 // Extensions:
