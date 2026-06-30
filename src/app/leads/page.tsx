@@ -15,8 +15,9 @@ export default function LeadsPage() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', phone: '', email: '', source: 'manual', service_interest: '', estimated_value: '', notes: '' })
   const [filter, setFilter] = useState('all')
+  const [search, setSearch] = useState('')
 
-  useEffect(() => { fetchLeads() }, [])
+  useEffect(() => { fetchLeads() }, [filter])
 
   async function fetchLeads() {
     setLoading(true)
@@ -26,8 +27,6 @@ export default function LeadsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchLeads() }, [filter])
-
   async function addLead() {
     await fetch('/api/leads', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
     setShowForm(false)
@@ -36,70 +35,89 @@ export default function LeadsPage() {
   }
 
   async function updateStatus(id: string, status: string) {
-    await fetch('/api/leads', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, status }) })
+    await fetch(`/api/leads/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
     fetchLeads()
   }
 
-  const totalValue = leads.reduce((s, l) => s + (l.estimated_value || 0), 0)
+  const filtered = leads.filter(l => l.name?.toLowerCase().includes(search.toLowerCase()) || l.email?.toLowerCase().includes(search.toLowerCase()))
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Lead Scanner</h1>
-          <p className="text-[#64748b] text-sm">{leads.length} leads • ${totalValue.toLocaleString()} pipeline</p>
-        </div>
-        <button onClick={() => setShowForm(!showForm)} className="bg-[#00f5ff]/10 border border-[#00f5ff]/30 text-[#00f5ff] px-4 py-2 rounded-lg text-sm hover:bg-[#00f5ff]/20">
-          + Add Lead
-        </button>
-      </div>
-
-      {/* Filter tabs */}
-      <div className="flex gap-2 flex-wrap">
-        {['all','new','contacted','qualified','converted','lost'].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`px-3 py-1 rounded-full text-xs border capitalize transition-colors ${ filter === s ? 'bg-[#00f5ff]/20 border-[#00f5ff]/50 text-[#00f5ff]' : 'border-[#1e1e2e] text-[#64748b] hover:border-[#00f5ff]/30'}`}>
-            {s}
-          </button>
-        ))}
-      </div>
-
-      {showForm && (
-        <div className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-4 grid grid-cols-2 gap-3">
-          {Object.keys(form).map(f => (
-            <div key={f}>
-              <label className="text-[#64748b] text-xs capitalize">{f.replace('_',' ')}</label>
-              <input value={(form as any)[f]} onChange={e => setForm(p => ({...p, [f]: e.target.value}))}
-                className="w-full bg-[#12121a] border border-[#1e1e2e] text-[#e2e8f0] rounded px-3 py-1.5 text-sm mt-1" />
-            </div>
-          ))}
-          <div className="col-span-2">
-            <button onClick={addLead} className="w-full bg-[#00f5ff]/10 border border-[#00f5ff]/30 text-[#00f5ff] py-2 rounded-lg text-sm hover:bg-[#00f5ff]/20">Save Lead</button>
+    <div className="min-h-screen bg-[#0a0a0f] text-white p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-[#00f5ff]">Leads</h1>
+            <p className="text-gray-400 mt-1">Track and manage your sales pipeline</p>
           </div>
+          <button onClick={() => setShowForm(true)} className="bg-[#00f5ff] text-black px-4 py-2 rounded-lg font-semibold hover:bg-[#00f5ff]/80">
+            + New Lead
+          </button>
         </div>
-      )}
 
-      {loading ? <p className="text-[#64748b] text-sm">Loading...</p> : (
-        <div className="space-y-2">
-          {leads.length === 0 && <p className="text-[#64748b] text-sm">No leads found</p>}
-          {leads.map(l => (
-            <div key={l.id} className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-4 flex items-center gap-4 hover:border-[#00f5ff]/30 transition-colors">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-white font-semibold">{l.name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[l.status] || 'text-gray-400 bg-gray-400/10 border-gray-400/30'}`}>{l.status}</span>
-                </div>
-                <p className="text-[#64748b] text-xs">{l.phone} {l.email && `• ${l.email}`} {l.service_interest && `• ${l.service_interest}`}</p>
-                {l.estimated_value > 0 && <p className="text-green-400 text-xs">${l.estimated_value.toLocaleString()} est.</p>}
-              </div>
-              <select value={l.status} onChange={e => updateStatus(l.id, e.target.value)}
-                className="bg-[#12121a] border border-[#1e1e2e] text-[#e2e8f0] text-xs rounded px-2 py-1">
-                {['new','contacted','qualified','converted','lost'].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
+        <div className="flex gap-3 mb-6 flex-wrap">
+          {['all','new','contacted','qualified','converted','lost'].map(s => (
+            <button key={s} onClick={() => setFilter(s)}
+              className={`px-4 py-1.5 rounded-full text-sm capitalize border transition-all ${
+                filter === s ? 'bg-[#00f5ff]/20 border-[#00f5ff] text-[#00f5ff]' : 'border-white/10 text-gray-400 hover:border-white/30'
+              }`}>{s}</button>
           ))}
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search leads..." className="ml-auto px-4 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#00f5ff]/50" />
         </div>
-      )}
+
+        {loading ? (
+          <div className="text-center py-20 text-gray-500">Loading leads...</div>
+        ) : (
+          <div className="grid gap-4">
+            {filtered.length === 0 && <div className="text-center py-20 text-gray-500">No leads found.</div>}
+            {filtered.map((lead: any) => (
+              <div key={lead.id} className="bg-white/5 border border-white/10 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="font-semibold text-lg">{lead.name}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full border capitalize ${STATUS_COLORS[lead.status] || 'text-gray-400 bg-gray-400/10 border-gray-400/30'}`}>{lead.status}</span>
+                  </div>
+                  <div className="text-sm text-gray-400 space-y-0.5">
+                    {lead.email && <div>{lead.email}</div>}
+                    {lead.phone && <div>{lead.phone}</div>}
+                    {lead.service_interest && <div className="text-[#00f5ff]/70">Interest: {lead.service_interest}</div>}
+                    {lead.estimated_value && <div className="text-green-400">Value: ${lead.estimated_value}</div>}
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {['contacted','qualified','converted','lost'].map(s => (
+                    <button key={s} onClick={() => updateStatus(lead.id, s)}
+                      className="text-xs px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/10 capitalize transition-all">{s}</button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showForm && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-[#111118] border border-white/10 rounded-2xl p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold text-[#00f5ff] mb-4">Add Lead</h2>
+              <div className="space-y-3">
+                {(['name','phone','email','service_interest','estimated_value','notes'] as const).map(f => (
+                  <input key={f} placeholder={f.replace('_',' ')} value={(form as any)[f]}
+                    onChange={e => setForm({...form, [f]: e.target.value})}
+                    className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#00f5ff]/50" />
+                ))}
+                <select value={form.source} onChange={e => setForm({...form, source: e.target.value})}
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none">
+                  {['manual','website','referral','square','callcentric','other'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={addLead} className="flex-1 bg-[#00f5ff] text-black py-2 rounded-lg font-semibold hover:bg-[#00f5ff]/80">Save</button>
+                <button onClick={() => setShowForm(false)} className="flex-1 border border-white/20 py-2 rounded-lg hover:bg-white/5">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
