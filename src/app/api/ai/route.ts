@@ -1,31 +1,25 @@
 import { NextRequest } from 'next/server'
-import { chatWithGemini, generateBookingConfirmation, generateLeadResponse } from '@/lib/azure'
+import { chatWithGemini } from '@/lib/azure'
 import { apiError, apiSuccess } from '@/lib/utils'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { action, messages, booking, lead } = body
+    const { message, messages } = body
 
-    if (action === 'chat') {
-      if (!messages || !Array.isArray(messages)) return apiError('messages array required', 400)
-      const result = await chatWithGemini(messages)
-      return apiSuccess({ reply: result.content, demo: result.demo, tokens: result.tokens })
+    // Support both single message (from UI) and messages array
+    const chatMessages = messages || [
+      { role: 'user', content: message }
+    ]
+
+    if (!chatMessages || !Array.isArray(chatMessages)) {
+      return apiError('message or messages required', 400)
     }
 
-    if (action === 'booking_confirmation') {
-      if (!booking) return apiError('booking object required', 400)
-      const message = await generateBookingConfirmation(booking)
-      return apiSuccess({ message })
-    }
-
-    if (action === 'lead_response') {
-      if (!lead) return apiError('lead object required', 400)
-      const message = await generateLeadResponse(lead)
-      return apiSuccess({ message })
-    }
-
-    return apiError('Invalid action. Use: chat, booking_confirmation, lead_response', 400)
+    const result = await chatWithGemini(chatMessages)
+    return apiSuccess({ reply: result.content, demo: result.demo, tokens: result.tokens })
   } catch (e: any) {
     return apiError(e.message)
   }
