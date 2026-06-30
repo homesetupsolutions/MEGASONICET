@@ -1,235 +1,197 @@
-'use client';
-import { useEffect, useState } from 'react';
+'use client'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 
-interface KPI {
-  label: string;
-  value: string;
-  sub?: string;
-  color: string;
+interface StatsData {
+  bookings: { total: number; pending: number; confirmed: number }
+  leads: { total: number; new_count: number }
+  payments: { total_cents: number; count: number }
+  calls: { total: number; missed: number }
 }
 
-interface Activity {
-  id: string;
-  type: string;
-  message: string;
-  time: string;
-}
-
-interface HuntLead {
-  id: string;
-  name: string;
-  value: string;
-  status: string;
-  phone: string;
-}
+const QUICK_LINKS = [
+  { href: '/bookings', label: 'Bookings', icon: '📅', color: 'bg-purple-600' },
+  { href: '/leads', label: 'Leads', icon: '🎯', color: 'bg-blue-600' },
+  { href: '/payments', label: 'Payments', icon: '💳', color: 'bg-green-600' },
+  { href: '/pbx', label: 'PBX / Calls', icon: '📞', color: 'bg-orange-600' },
+  { href: '/ai', label: 'AI Assistant', icon: '🤖', color: 'bg-indigo-600' },
+  { href: '/calendar', label: 'Calendar', icon: '📆', color: 'bg-pink-600' },
+  { href: '/reminders', label: 'Reminders', icon: '🔔', color: 'bg-yellow-600' },
+  { href: '/settings', label: 'Settings', icon: '⚙️', color: 'bg-gray-600' },
+]
 
 export default function DashboardPage() {
-  const [kpis, setKpis] = useState<KPI[]>([]);
-  const [activity, setActivity] = useState<Activity[]>([]);
-  const [huntLeads, setHuntLeads] = useState<HuntLead[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const [stats, setStats] = useState<StatsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [business, setBusiness] = useState<'FEELBASSVIP' | 'HSS'>('FEELBASSVIP')
+  const [time, setTime] = useState(new Date())
 
   useEffect(() => {
-    const tick = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(tick);
-  }, []);
+    const tick = setInterval(() => setTime(new Date()), 1000)
+    return () => clearInterval(tick)
+  }, [])
 
   useEffect(() => {
-    async function loadDashboard() {
+    const load = async () => {
+      setLoading(true)
       try {
-        // Load bookings for KPIs
-        const [bookingsRes, leadsRes, paymentsRes] = await Promise.all([
-          fetch('/api/bookings').then(r => r.json()).catch(() => ({ bookings: [] })),
-          fetch('/api/leads').then(r => r.json()).catch(() => ({ leads: [] })),
-          fetch('/api/square?action=payments').then(r => r.json()).catch(() => ({ payments: [] })),
-        ]);
-
-        const bookings = bookingsRes.bookings || [];
-        const leads = leadsRes.leads || [];
-        const payments = paymentsRes.payments || [];
-
-        const today = new Date().toDateString();
-        const todayBookings = bookings.filter((b: {date: string}) => new Date(b.date).toDateString() === today);
-        const totalRevenue = payments.filter((p: {status: string}) => p.status === 'COMPLETED')
-          .reduce((sum: number, p: {amount_money?: {amount: number}}) => sum + ((p.amount_money?.amount || 0) / 100), 0);
-        const hotLeads = leads.filter((l: {status: string}) => l.status === 'hot' || l.status === 'warm');
-
-        setKpis([
-          { label: "Today's Bookings", value: String(todayBookings.length), sub: `${bookings.length} total`, color: '#00f5ff' },
-          { label: 'Total Revenue', value: `$${totalRevenue.toFixed(2)}`, sub: 'CAD all time', color: '#00ff88' },
-          { label: 'Hot Leads', value: String(hotLeads.length), sub: `${leads.length} total leads`, color: '#ff6b35' },
-          { label: 'Upcoming Reminders', value: String(bookings.filter((b: {reminderSent: boolean}) => !b.reminderSent).length), sub: 'pending alerts', color: '#a855f7' },
-        ]);
-
-        // Build activity feed
-        const acts: Activity[] = [
-          ...bookings.slice(0, 3).map((b: {id: string; clientName: string; date: string}) => ({
-            id: b.id,
-            type: 'booking',
-            message: `Booking: ${b.clientName}`,
-            time: new Date(b.date).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' }),
-          })),
-          ...leads.slice(0, 2).map((l: {id: string; name: string; status: string; createdAt: string}) => ({
-            id: l.id,
-            type: 'lead',
-            message: `Lead: ${l.name} (${l.status})`,
-            time: new Date(l.createdAt).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit' }),
-          })),
-        ];
-        setActivity(acts);
-
-        // Hunt for money - unpaid/hot leads
-        const hunt: HuntLead[] = leads
-          .filter((l: {status: string}) => l.status === 'hot' || l.status === 'warm')
-          .slice(0, 5)
-          .map((l: {id: string; name: string; value?: number; status: string; phone?: string}) => ({
-            id: l.id,
-            name: l.name,
-            value: l.value ? `$${l.value}` : 'TBD',
-            status: l.status,
-            phone: l.phone || 'N/A',
-          }));
-        setHuntLeads(hunt);
+        const [bookRes, leadRes, payRes, pbxRes] = await Promise.all([
+          fetch(`/api/bookings?business=${business}&limit=100`).then(r => r.json()),
+          fetch(`/api/leads?business=${business}&limit=100`).then(r => r.json()),
+          fetch(`/api/payments?business=${business}&limit=100`).then(r => r.json()),
+          fetch(`/api/pbx?business=${business}&limit=100`).then(r => r.json()),
+        ])
+        const bookings = bookRes.bookings || []
+        const leads = leadRes.leads || []
+        const payments = payRes.payments || []
+        const calls = pbxRes.logs || []
+        setStats({
+          bookings: {
+            total: bookings.length,
+            pending: bookings.filter((b: any) => b.status === 'pending').length,
+            confirmed: bookings.filter((b: any) => b.status === 'confirmed').length,
+          },
+          leads: {
+            total: leads.length,
+            new_count: leads.filter((l: any) => l.status === 'new').length,
+          },
+          payments: {
+            total_cents: payments.reduce((s: number, p: any) => s + (p.amount_money?.amount || p.amount_cents || 0), 0),
+            count: payments.length,
+          },
+          calls: {
+            total: calls.length,
+            missed: calls.filter((c: any) => c.status === 'missed').length,
+          },
+        })
       } catch (e) {
-        console.error('Dashboard load error', e);
+        console.error('Dashboard load error:', e)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
-    loadDashboard();
-  }, []);
+    load()
+  }, [business])
 
-  const statusColor: Record<string, string> = {
-    hot: '#ff4444',
-    warm: '#ff8c00',
-    cold: '#4488ff',
-    new: '#00f5ff',
-  };
-
-  const activityIcon: Record<string, string> = {
-    booking: '📅',
-    lead: '🎯',
-    payment: '💳',
-    reminder: '🔔',
-  };
+  const formatCAD = (cents: number) =>
+    new Intl.NumberFormat('en-CA', { style: 'currency', currency: 'CAD' }).format(cents / 100)
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-[#e2e8f0] p-6">
+    <div className="min-h-screen bg-gray-950 text-white p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-[#00f5ff] tracking-wide">MEGASONIC</h1>
-          <p className="text-[#64748b] text-sm">Command Center Dashboard</p>
+          <h1 className="text-3xl font-bold text-white">MEGASONICET Command Center</h1>
+          <p className="text-gray-400 mt-1">
+            {time.toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}{' '}
+            &mdash; {time.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </p>
         </div>
-        <div className="text-right">
-          <p className="text-[#00f5ff] font-mono text-lg">
-            {currentTime.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </p>
-          <p className="text-[#64748b] text-sm">
-            {currentTime.toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setBusiness('FEELBASSVIP')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              business === 'FEELBASSVIP' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            FeelBassVIP
+          </button>
+          <button
+            onClick={() => setBusiness('HSS')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              business === 'HSS' ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            Home Setup
+          </button>
         </div>
       </div>
 
+      {/* KPI Cards */}
       {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="flex gap-2">
-            {[0, 150, 300].map(d => (
-              <div key={d} className="w-3 h-3 bg-[#00f5ff] rounded-full animate-bounce" style={{ animationDelay: `${d}ms` }} />
-            ))}
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-gray-900 rounded-xl p-5 animate-pulse h-28" />
+          ))}
         </div>
-      ) : (
-        <>
-          {/* KPI Row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {kpis.map((k, i) => (
-              <div key={i} className="bg-[#0d0d1a] border rounded-xl p-5" style={{ borderColor: k.color + '40' }}>
-                <p className="text-xs text-[#64748b] uppercase tracking-wider mb-1">{k.label}</p>
-                <p className="text-3xl font-bold" style={{ color: k.color }}>{k.value}</p>
-                {k.sub && <p className="text-xs text-[#64748b] mt-1">{k.sub}</p>}
-              </div>
-            ))}
-          </div>
+      ) : stats ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <StatCard label="Bookings" value={stats.bookings.total} sub={`${stats.bookings.pending} pending`} color="purple" />
+          <StatCard label="Leads" value={stats.leads.total} sub={`${stats.leads.new_count} new`} color="blue" />
+          <StatCard label="Revenue" value={formatCAD(stats.payments.total_cents)} sub={`${stats.payments.count} transactions`} color="green" />
+          <StatCard label="Calls" value={stats.calls.total} sub={`${stats.calls.missed} missed`} color="orange" />
+        </div>
+      ) : null}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Activity Feed */}
-            <div className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-5">
-              <h2 className="text-[#00f5ff] font-bold mb-4 uppercase tracking-wider text-sm">Live Activity</h2>
-              {activity.length === 0 ? (
-                <p className="text-[#64748b] text-sm">No recent activity. Demo mode active.</p>
-              ) : (
-                <div className="space-y-3">
-                  {activity.map(a => (
-                    <div key={a.id} className="flex items-center gap-3 p-3 bg-[#0a0a0f] rounded-lg border border-[#1e1e2e]">
-                      <span className="text-xl">{activityIcon[a.type] || '📌'}</span>
-                      <div className="flex-1">
-                        <p className="text-sm text-[#e2e8f0]">{a.message}</p>
-                      </div>
-                      <span className="text-xs text-[#64748b]">{a.time}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+      {/* Quick Links */}
+      <h2 className="text-xl font-semibold text-gray-300 mb-4">Quick Navigation</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+        {QUICK_LINKS.map(link => (
+          <Link
+            key={link.href}
+            href={link.href}
+            className={`${link.color} rounded-xl p-4 flex flex-col items-center justify-center gap-2 hover:opacity-90 transition-opacity`}
+          >
+            <span className="text-3xl">{link.icon}</span>
+            <span className="font-semibold text-sm">{link.label}</span>
+          </Link>
+        ))}
+      </div>
 
-            {/* Hunt For Money */}
-            <div className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-5">
-              <h2 className="text-[#ff6b35] font-bold mb-4 uppercase tracking-wider text-sm">Hunt For Money 🎯</h2>
-              {huntLeads.length === 0 ? (
-                <p className="text-[#64748b] text-sm">No hot leads yet. Add leads to start hunting.</p>
-              ) : (
-                <div className="space-y-3">
-                  {huntLeads.map(l => (
-                    <div key={l.id} className="flex items-center gap-3 p-3 bg-[#0a0a0f] rounded-lg border border-[#1e1e2e]">
-                      <div
-                        className="w-2 h-2 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: statusColor[l.status] || '#888' }}
-                      />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-[#e2e8f0]">{l.name}</p>
-                        <p className="text-xs text-[#64748b]">{l.phone}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-[#00ff88]">{l.value}</p>
-                        <p className="text-xs capitalize" style={{ color: statusColor[l.status] || '#888' }}>{l.status}</p>
-                      </div>
-                      <a
-                        href={`/pbx?call=${encodeURIComponent(l.phone)}`}
-                        className="ml-2 px-3 py-1 bg-[#00f5ff]/10 border border-[#00f5ff]/30 text-[#00f5ff] rounded text-xs hover:bg-[#00f5ff]/20"
-                      >
-                        Call
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Nav */}
-          <div className="mt-6 grid grid-cols-3 lg:grid-cols-6 gap-3">
-            {[
-              { label: 'Bookings', href: '/bookings', icon: '📅', color: '#00f5ff' },
-              { label: 'Calendar', href: '/calendar', icon: '🗓️', color: '#00ff88' },
-              { label: 'Leads', href: '/leads', icon: '🎯', color: '#ff6b35' },
-              { label: 'Payments', href: '/payments', icon: '💳', color: '#a855f7' },
-              { label: 'Monica AI', href: '/monica', icon: '🤖', color: '#00f5ff' },
-              { label: 'PBX Phone', href: '/pbx', icon: '📞', color: '#00ff88' },
-            ].map(n => (
-              <a
-                key={n.href}
-                href={n.href}
-                className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-4 text-center hover:border-[#00f5ff]/50 transition-colors group"
-              >
-                <div className="text-2xl mb-2">{n.icon}</div>
-                <p className="text-xs font-medium" style={{ color: n.color }}>{n.label}</p>
-              </a>
-            ))}
-          </div>
-        </>
-      )}
+      {/* Business Status */}
+      <div className="grid md:grid-cols-2 gap-6">
+        <BusinessCard
+          name="FeelBassVIP"
+          description="Wearable Bass Experience Rentals"
+          location="Calgary, AB"
+          services={['Bone Conduction Headbands', 'BassSkin Technology', 'Event Rentals', 'Corporate Events']}
+          color="purple"
+        />
+        <BusinessCard
+          name="Home Setup Solutions"
+          description="Residential Technology Installation"
+          location="Calgary, AB"
+          services={['TV Mounting', 'WiFi & Networking', 'Smart Home Setup', 'Home Theatre']}
+          color="blue"
+        />
+      </div>
     </div>
-  );
+  )
+}
+
+function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub: string; color: string }) {
+  const colors: Record<string, string> = {
+    purple: 'border-purple-500 bg-purple-900/20',
+    blue: 'border-blue-500 bg-blue-900/20',
+    green: 'border-green-500 bg-green-900/20',
+    orange: 'border-orange-500 bg-orange-900/20',
+  }
+  return (
+    <div className={`rounded-xl p-5 border-l-4 ${colors[color] || colors.purple} bg-gray-900`}>
+      <p className="text-gray-400 text-sm">{label}</p>
+      <p className="text-2xl font-bold text-white mt-1">{value}</p>
+      <p className="text-gray-500 text-xs mt-1">{sub}</p>
+    </div>
+  )
+}
+
+function BusinessCard({ name, description, location, services, color }: {
+  name: string; description: string; location: string; services: string[]; color: string
+}) {
+  return (
+    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+      <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-3 ${
+        color === 'purple' ? 'bg-purple-900 text-purple-300' : 'bg-blue-900 text-blue-300'
+      }`}>
+        {location}
+      </div>
+      <h3 className="text-lg font-bold text-white">{name}</h3>
+      <p className="text-gray-400 text-sm mb-4">{description}</p>
+      <div className="flex flex-wrap gap-2">
+        {services.map(s => (
+          <span key={s} className="bg-gray-800 text-gray-300 text-xs px-2 py-1 rounded">{s}</span>
+        ))}
+      </div>
+    </div>
+  )
 }
