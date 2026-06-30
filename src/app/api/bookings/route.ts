@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { createBooking, listBookings, updateBookingStatus } from '@/lib/supabase'
 import { apiError, apiSuccess } from '@/lib/utils'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -18,15 +20,15 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { business, customer_name, customer_email, customer_phone, service, event_date, amount_cents, notes } = body
-    if (!business || !customer_name || !service || !event_date) {
-      return apiError('Missing required fields: business, customer_name, service, event_date', 400)
+    if (!customer_name || !event_date) {
+      return apiError('Missing required fields: customer_name, event_date', 400)
     }
     const result = await createBooking({
-      business,
+      business: business || 'HSS',
       customer_name,
       customer_email,
       customer_phone,
-      service,
+      service: service || 'General',
       event_date,
       status: 'pending',
       amount_cents,
