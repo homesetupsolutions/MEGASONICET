@@ -1,8 +1,10 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { formatDate } from '@/lib/utils'
 
 interface CalEvent { id: string; summary: string; start: string; end: string; location?: string; description?: string }
+
+const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
 export default function CalendarPage() {
   const [events, setEvents] = useState<CalEvent[]>([])
@@ -11,98 +13,149 @@ export default function CalendarPage() {
   const [form, setForm] = useState({ summary: '', start: '', end: '', location: '', description: '' })
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const today = new Date()
+  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1))
 
   useEffect(() => { fetchEvents() }, [])
 
   async function fetchEvents() {
     setLoading(true)
-    const res = await fetch('/api/bookings')
-    const data = await res.json()
-    // Map bookings to calendar-style events
-    setEvents((data || []).map((b: any) => ({
-      id: b.id,
-      summary: `${b.service_type || 'Event'} — ${b.client_name}`,
-      start: b.event_date,
-      end: b.event_end || b.event_date,
-      location: b.location,
-      description: `$${b.total || 0} • ${b.status}`
-    })))
+    try {
+      const res = await fetch('/api/bookings')
+      const data = await res.json()
+      const list = data?.bookings || data || []
+      setEvents(list.map((b: any) => ({
+        id: b.id,
+        summary: `${b.service || b.service_type || 'Event'} - ${b.customer_name || b.client_name}`,
+        start: b.event_date,
+        end: b.event_end || b.event_date,
+        location: b.location || '',
+        description: `$${(b.amount_cents||0)/100} - ${b.status}`
+      })))
+    } catch { setEvents([]) }
     setLoading(false)
   }
 
   async function createBooking() {
-    setSaving(true)
-    setMsg('')
-    const res = await fetch('/api/bookings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, client_name: form.summary, service_type: 'FeelBassVIP', event_date: form.start, event_end: form.end })
-    })
-    const data = await res.json()
+    setSaving(true); setMsg('')
+    try {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: form.summary,
+          event_date: form.start,
+          event_end: form.end,
+          location: form.location,
+          notes: form.description,
+          business: 'HSS',
+          service: 'General',
+          status: 'pending'
+        })
+      })
+      if (res.ok) { setMsg('Event created!'); setShowForm(false); setForm({ summary:'',start:'',end:'',location:'',description:'' }); fetchEvents() }
+      else setMsg('Failed to create.')
+    } catch { setMsg('Error.') }
     setSaving(false)
-    if (res.ok) {
-      setMsg('Booked & synced to vip@feelbass.vip')
-      setShowForm(false)
-      fetchEvents()
-    } else {
-      setMsg(data.error || 'Error')
-    }
+  }
+
+  const year = viewDate.getFullYear()
+  const month = viewDate.getMonth()
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells = Array.from({ length: firstDay + daysInMonth }, (_, i) => i < firstDay ? null : i - firstDay + 1)
+
+  function eventsOnDay(day: number) {
+    const d = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+    return events.filter(e => e.start?.startsWith(d))
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Calendar</h1>
-          <p className="text-[#64748b] text-sm">Synced with vip@feelbass.vip</p>
+    <div className="min-h-screen bg-[#0a0a0f] text-white p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-[#00f5ff]">Calendar</h1>
+            <p className="text-gray-400 mt-1">Bookings and events overview</p>
+          </div>
+          <button onClick={() => setShowForm(true)} className="bg-[#00f5ff] text-black px-4 py-2 rounded-lg font-semibold hover:bg-[#00f5ff]/80">+ New Event</button>
         </div>
-        <button onClick={() => setShowForm(!showForm)} className="bg-[#00f5ff]/10 border border-[#00f5ff]/30 text-[#00f5ff] px-4 py-2 rounded-lg text-sm hover:bg-[#00f5ff]/20 transition-colors">
-          + New Booking
-        </button>
+
+        <div className="flex items-center gap-4 mb-4">
+          <button onClick={() => setViewDate(new Date(year, month-1, 1))} className="px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/10">&larr;</button>
+          <h2 className="text-lg font-semibold w-44 text-center">{MONTHS[month]} {year}</h2>
+          <button onClick={() => setViewDate(new Date(year, month+1, 1))} className="px-3 py-1.5 border border-white/10 rounded-lg hover:bg-white/10">&rarr;</button>
+          <button onClick={() => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1))} className="ml-auto text-sm text-[#00f5ff] border border-[#00f5ff]/30 px-3 py-1.5 rounded-lg hover:bg-[#00f5ff]/10">Today</button>
+        </div>
+
+        <div className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden mb-8">
+          <div className="grid grid-cols-7 border-b border-white/10">
+            {DAYS.map(d => <div key={d} className="text-center py-2 text-xs font-semibold text-gray-400">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7">
+            {cells.map((day, i) => {
+              const isToday = day !== null && day === today.getDate() && month === today.getMonth() && year === today.getFullYear()
+              const dayEvts = day ? eventsOnDay(day) : []
+              return (
+                <div key={i} className={`min-h-[80px] p-2 border-b border-r border-white/5 ${!day ? '' : isToday ? 'bg-[#00f5ff]/5' : 'hover:bg-white/5'}`}>
+                  {day && (
+                    <>
+                      <span className={`text-sm font-medium ${isToday ? 'text-[#00f5ff] font-bold' : 'text-gray-300'}`}>{day}</span>
+                      <div className="mt-1 space-y-0.5">
+                        {dayEvts.slice(0,2).map(e => <div key={e.id} className="text-xs truncate bg-[#00f5ff]/20 text-[#00f5ff] px-1.5 py-0.5 rounded">{e.summary}</div>)}
+                        {dayEvts.length > 2 && <div className="text-xs text-gray-500">+{dayEvts.length-2} more</div>}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <h2 className="text-lg font-semibold mb-4">Upcoming Events</h2>
+        {loading ? <div className="text-gray-500 py-8 text-center">Loading...</div> : events.length === 0 ? (
+          <div className="text-gray-500 text-center py-8">No events. Add a booking above.</div>
+        ) : (
+          <div className="space-y-3">
+            {events.slice(0,10).map(e => (
+              <div key={e.id} className="flex items-center gap-4 bg-white/5 border border-white/10 rounded-xl px-5 py-4">
+                <div className="w-12 h-12 bg-[#00f5ff]/10 border border-[#00f5ff]/20 rounded-lg flex flex-col items-center justify-center shrink-0">
+                  <span className="text-xs text-[#00f5ff]">{e.start ? new Date(e.start).toLocaleString('default',{month:'short'}) : '-'}</span>
+                  <span className="text-lg font-bold text-[#00f5ff]">{e.start ? new Date(e.start).getDate() : '-'}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">{e.summary}</div>
+                  {e.location && <div className="text-sm text-gray-400 truncate">{e.location}</div>}
+                  {e.description && <div className="text-sm text-gray-500">{e.description}</div>}
+                </div>
+                <div className="text-sm text-gray-400 shrink-0">{e.start ? new Date(e.start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {msg && <div className="mt-4 text-sm text-green-400">{msg}</div>}
+
+        {showForm && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-[#111118] border border-white/10 rounded-2xl p-6 w-full max-w-md">
+              <h2 className="text-xl font-bold text-[#00f5ff] mb-4">New Event</h2>
+              <div className="space-y-3">
+                <input placeholder="Title / Client Name" value={form.summary} onChange={e => setForm({...form,summary:e.target.value})} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#00f5ff]/50" />
+                <input type="datetime-local" value={form.start} onChange={e => setForm({...form,start:e.target.value})} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#00f5ff]/50" />
+                <input type="datetime-local" value={form.end} onChange={e => setForm({...form,end:e.target.value})} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#00f5ff]/50" />
+                <input placeholder="Location" value={form.location} onChange={e => setForm({...form,location:e.target.value})} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#00f5ff]/50" />
+                <textarea placeholder="Notes" value={form.description} onChange={e => setForm({...form,description:e.target.value})} rows={2} className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#00f5ff]/50 resize-none" />
+              </div>
+              <div className="flex gap-3 mt-5">
+                <button onClick={createBooking} disabled={saving} className="flex-1 bg-[#00f5ff] text-black py-2 rounded-lg font-semibold disabled:opacity-50">{saving ? 'Saving...' : 'Create'}</button>
+                <button onClick={() => setShowForm(false)} className="flex-1 border border-white/20 py-2 rounded-lg hover:bg-white/5">Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {showForm && (
-        <div className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-4 space-y-3">
-          <h2 className="text-[#00f5ff] font-bold text-sm uppercase tracking-widest">New Booking</h2>
-          {['summary', 'start', 'end', 'location', 'description'].map(f => (
-            <div key={f}>
-              <label className="text-[#64748b] text-xs capitalize">{f === 'start' ? 'Start Date/Time' : f === 'end' ? 'End Date/Time' : f}</label>
-              <input
-                type={f === 'start' || f === 'end' ? 'datetime-local' : 'text'}
-                value={(form as any)[f]}
-                onChange={e => setForm(p => ({ ...p, [f]: e.target.value }))}
-                className="w-full bg-[#12121a] border border-[#1e1e2e] text-[#e2e8f0] rounded px-3 py-1.5 text-sm mt-1"
-              />
-            </div>
-          ))}
-          {msg && <p className="text-xs text-[#00f5ff]">{msg}</p>}
-          <button onClick={createBooking} disabled={saving} className="w-full bg-[#00f5ff]/10 border border-[#00f5ff]/30 text-[#00f5ff] py-2 rounded-lg text-sm hover:bg-[#00f5ff]/20 disabled:opacity-50">
-            {saving ? 'Checking availability...' : 'Book & Sync to Calendar'}
-          </button>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="text-[#64748b] text-sm">Loading calendar...</div>
-      ) : (
-        <div className="space-y-2">
-          {events.length === 0 && <div className="text-[#64748b] text-sm">No upcoming events</div>}
-          {events.map(evt => (
-            <div key={evt.id} className="bg-[#0d0d1a] border border-[#1e1e2e] rounded-xl p-4 flex items-start gap-4 hover:border-[#00f5ff]/30 transition-colors">
-              <div className="bg-[#00f5ff]/10 rounded-lg p-2 text-center min-w-[48px]">
-                <div className="text-[#00f5ff] text-xs font-bold">{new Date(evt.start).toLocaleDateString('en-CA', { month: 'short' })}</div>
-                <div className="text-white text-lg font-bold leading-tight">{new Date(evt.start).getDate()}</div>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold truncate">{evt.summary}</p>
-                <p className="text-[#64748b] text-xs">{formatDate(evt.start)} — {formatDate(evt.end)}</p>
-                {evt.location && <p className="text-[#64748b] text-xs">📍 {evt.location}</p>}
-                {evt.description && <p className="text-[#00f5ff] text-xs mt-1">{evt.description}</p>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   )
 }
