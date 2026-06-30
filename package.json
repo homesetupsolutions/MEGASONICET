@@ -27,7 +27,7 @@
     "square": "^38.0.0",
     "twilio": "^5.3.0",
     "@google/generative-ai": "^0.21.0",
-    "@azure/cognitiveservices-speech-sdk": "^1.42.0"
+        "microsoft-cognitiveservices-speech-sdk": "^1.42.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
